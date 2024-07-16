@@ -1,7 +1,7 @@
 package llo
 
 import (
-	"github.com/smartcontractkit/libocr/offchainreporting2/types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
 )
 
 var _ PredecessorRetirementReportCache = &predecessorRetirementReportCache{}

@@ -5,8 +5,8 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/smartcontractkit/libocr/offchainreporting2/types"
-	"github.com/smartcontractkit/libocr/offchainreporting2plus/ocr3types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2plus/ocr3types"
 	"golang.org/x/exp/maps"
 
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"

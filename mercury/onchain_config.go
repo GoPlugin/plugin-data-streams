@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/smartcontractkit/libocr/bigbigendian"
+	"github.com/goplugin/plugin-libocr/bigbigendian"
 
 	"github.com/goplugin/plugin-common/pkg/types/mercury"
 )

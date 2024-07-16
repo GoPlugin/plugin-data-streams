@@ -3,7 +3,7 @@ package mercury
 import (
 	"math/big"
 
-	"github.com/smartcontractkit/libocr/bigbigendian"
+	"github.com/goplugin/plugin-libocr/bigbigendian"
 )
 
 var MaxInt192 *big.Int

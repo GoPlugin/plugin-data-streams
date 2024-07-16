@@ -17,9 +17,9 @@ import (
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
 
 	chainselectors "github.com/smartcontractkit/chain-selectors"
-	"github.com/smartcontractkit/libocr/offchainreporting2/types"
-	ocr2types "github.com/smartcontractkit/libocr/offchainreporting2/types"
-	"github.com/smartcontractkit/libocr/offchainreporting2plus/ocr3types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
+	ocr2types "github.com/goplugin/plugin-libocr/offchainreporting2/types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2plus/ocr3types"
 )
 
 // TODO: Split out this file and write unit tests: https://smartcontract-it.atlassian.net/browse/MERC-3524

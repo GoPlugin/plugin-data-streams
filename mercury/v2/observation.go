@@ -3,7 +3,7 @@ package v2
 import (
 	"math/big"
 
-	"github.com/smartcontractkit/libocr/commontypes"
+	"github.com/goplugin/plugin-libocr/commontypes"
 
 	"github.com/goplugin/plugin-data-streams/mercury"
 )

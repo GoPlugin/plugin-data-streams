@@ -3,7 +3,7 @@ package mercury
 import (
 	"math/big"
 
-	"github.com/smartcontractkit/libocr/commontypes"
+	"github.com/goplugin/plugin-libocr/commontypes"
 )
 
 type PAO interface {

@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
-	"github.com/smartcontractkit/libocr/offchainreporting2/types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
 )
 
 var _ ReportCodec = JSONReportCodec{}

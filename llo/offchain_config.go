@@ -3,7 +3,7 @@ package llo
 import (
 	"fmt"
 
-	"github.com/smartcontractkit/libocr/offchainreporting2/types"
+	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
 	"google.golang.org/protobuf/proto"
 )
 
