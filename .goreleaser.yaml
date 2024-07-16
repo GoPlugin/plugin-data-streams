@@ -1,0 +1,10 @@
+# Requires GoReleaser Pro
+includes:
+  - from_file:
+      path: ./.goreleaser-template.yaml
+
+project_name: plugin-data-streams
+
+monorepo:
+  tag_prefix: plugin-data-streams@
+  dir: plugin-data-streams
