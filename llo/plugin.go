@@ -16,7 +16,7 @@ import (
 	"github.com/goplugin/plugin-common/pkg/logger"
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
 
-	chainselectors "github.com/smartcontractkit/chain-selectors"
+	chainselectors "github.com/goplugin/chain-selectors"
 	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
 	ocr2types "github.com/goplugin/plugin-libocr/offchainreporting2/types"
 	"github.com/goplugin/plugin-libocr/offchainreporting2plus/ocr3types"
