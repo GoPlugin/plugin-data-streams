@@ -42,7 +42,7 @@ require (
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mr-tron/base58 v1.2.0 // indirect
-	github.com/mwitkow/grpc-proxy v0.0.0-20230212185441-f345521cb9c9 // indirect
+	//github.com/mwitkow/grpc-proxy v0.0.0-20230212185441-f345521cb9c9 // indirect
 	github.com/oklog/run v1.0.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -79,5 +79,5 @@ replace (
 	github.com/hashicorp/go-plugin => github.com/goplugin/go-plugin v0.0.0-20240731085818-4423fdd168d2
 
 	// until merged upstream: https://github.com/mwitkow/grpc-proxy/pull/69
-	github.com/mwitkow/grpc-proxy => github.com/goplugin/grpc-proxy v0.0.0-20240731062523-66bd5f5413fe
+	//github.com/mwitkow/grpc-proxy => github.com/goplugin/grpc-proxy v0.0.0-20240731062523-66bd5f5413fe
 )
