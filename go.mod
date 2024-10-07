@@ -10,8 +10,10 @@ require (
 	github.com/shopspring/decimal v1.3.1
 	github.com/stretchr/testify v1.9.0
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa
-	google.golang.org/protobuf v1.34.1
+	google.golang.org/protobuf v1.35.1
 )
+
+require github.com/mwitkow/grpc-proxy v0.0.0-20230212185441-f345521cb9c9 // indirect
 
 require (
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
@@ -74,10 +76,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	// until merged upstream: https://github.com/hashicorp/go-plugin/pull/257
-	github.com/hashicorp/go-plugin => github.com/goplugin/go-plugin v0.0.0-20240731085818-4423fdd168d2
-
-	// until merged upstream: https://github.com/mwitkow/grpc-proxy/pull/69
-	//github.com/mwitkow/grpc-proxy => github.com/goplugin/grpc-proxy v0.0.0-20240731062523-66bd5f5413fe
-)
+// until merged upstream: https://github.com/hashicorp/go-plugin/pull/257
+replace github.com/hashicorp/go-plugin => github.com/goplugin/go-plugin v0.0.0-20240731085818-4423fdd168d2
