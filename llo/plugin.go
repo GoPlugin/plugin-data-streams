@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/goplugin/plugin-libocr/quorumhelper"
-
 	"github.com/goplugin/plugin-common/pkg/logger"
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
 
@@ -14,6 +12,8 @@ import (
 	"github.com/goplugin/plugin-libocr/offchainreporting2plus/ocr3types"
 )
 
+// TODO: Split out this file and write unit tests: https://smartcontract-it.atlassian.net/browse/MERC-3524
+
 // Additional limits so we can more effectively bound the size of observations
 // NOTE: These are hardcoded because these exact values are relied upon as a
 // property of coming to consensus, it's too dangerous to make these
@@ -21,18 +21,6 @@ import (
 // OffchainConfig if they need to be changed dynamically and in a
 // backwards-compatible way.
 const (
-	// OCR protocol limits
-	// NOTE: CAREFUL! If we ever accidentally exceed these e.g.
-	// through too many channels/streams, the protocol will halt.
-	//
-	// TODO: How many channels/streams can we support given these constraints?
-	// https://smartcontract-it.atlassian.net/browse/MERC-6468
-	MaxReportCount       = ocr3types.MaxMaxReportCount
-	MaxObservationLength = ocr3types.MaxMaxObservationLength
-	MaxOutcomeLength     = ocr3types.MaxMaxOutcomeLength
-	MaxReportLength      = ocr3types.MaxMaxReportLength
-
-	// LLO-specific limits
 	// Maximum amount of channels that can be added per round (if more than
 	// this needs to be added, it will be added in batches until everything is
 	// up-to-date)
@@ -42,10 +30,14 @@ const (
 	// is up-to-date)
 	MaxObservationUpdateChannelDefinitionsLength = 5
 	// Maximum number of streams that can be observed per round
+	// TODO: This needs to be implemented on the Observation side so we don't
+	// even generate an observation that fails this
 	MaxObservationStreamValuesLength = 10_000
 	// MaxOutcomeChannelDefinitionsLength is the maximum number of channels that
 	// can be supported
-	MaxOutcomeChannelDefinitionsLength = MaxReportCount
+	// TODO: This needs to be implemented on the Observation side so we don't
+	// even generate an observation that fails this
+	MaxOutcomeChannelDefinitionsLength = 10_000
 )
 
 type DSOpts interface {
@@ -104,7 +96,7 @@ type ShouldRetireCache interface { // reads asynchronously from onchain Configur
 	// Should the protocol instance retire according to the configuration
 	// contract?
 	// See: https://github.com/goplugin/mercury-v1-sketch/blob/main/onchain/src/ConfigurationStore.sol#L18
-	ShouldRetire(digest ocr2types.ConfigDigest) (bool, error)
+	ShouldRetire() (bool, error)
 }
 
 // The predecessor protocol instance stores its attested retirement report in
@@ -117,15 +109,7 @@ type ShouldRetireCache interface { // reads asynchronously from onchain Configur
 // The sketch envisions it being implemented as a single object that is shared
 // between different protocol instances.
 type PredecessorRetirementReportCache interface {
-	// AttestedRetirementReport returns the attested retirement report for the
-	// given config digest from the local cache.
-	//
-	// This should return nil and not error in the case of a missing attested
-	// retirement report.
 	AttestedRetirementReport(predecessorConfigDigest ocr2types.ConfigDigest) ([]byte, error)
-	// CheckAttestedRetirementReport verifies that an attested retirement
-	// report, which may have come from another node, is valid (signed) with
-	// signers corresponding to the given config digest
 	CheckAttestedRetirementReport(predecessorConfigDigest ocr2types.ConfigDigest, attestedRetirementReport []byte) (RetirementReport, error)
 }
 
@@ -188,9 +172,9 @@ type ChannelDefinitionCache interface {
 // A ReportingPlugin instance will only ever serve a single protocol instance.
 var _ ocr3types.ReportingPluginFactory[llotypes.ReportInfo] = &PluginFactory{}
 
-func NewPluginFactory(cfg Config, prrc PredecessorRetirementReportCache, src ShouldRetireCache, rcodec RetirementReportCodec, cdc ChannelDefinitionCache, ds DataSource, lggr logger.Logger, oncc OnchainConfigCodec, reportCodecs map[llotypes.ReportFormat]ReportCodec) *PluginFactory {
+func NewPluginFactory(cfg Config, prrc PredecessorRetirementReportCache, src ShouldRetireCache, cdc ChannelDefinitionCache, ds DataSource, lggr logger.Logger, codecs map[llotypes.ReportFormat]ReportCodec) *PluginFactory {
 	return &PluginFactory{
-		cfg, prrc, src, rcodec, cdc, ds, lggr, oncc, reportCodecs,
+		cfg, prrc, src, cdc, ds, lggr, codecs,
 	}
 }
 
@@ -204,43 +188,39 @@ type PluginFactory struct {
 	Config                           Config
 	PredecessorRetirementReportCache PredecessorRetirementReportCache
 	ShouldRetireCache                ShouldRetireCache
-	RetirementReportCodec            RetirementReportCodec
 	ChannelDefinitionCache           ChannelDefinitionCache
 	DataSource                       DataSource
 	Logger                           logger.Logger
-	OnchainConfigCodec               OnchainConfigCodec
-	ReportCodecs                     map[llotypes.ReportFormat]ReportCodec
+	Codecs                           map[llotypes.ReportFormat]ReportCodec
 }
 
-func (f *PluginFactory) NewReportingPlugin(ctx context.Context, cfg ocr3types.ReportingPluginConfig) (ocr3types.ReportingPlugin[llotypes.ReportInfo], ocr3types.ReportingPluginInfo, error) {
-	onchainConfig, err := f.OnchainConfigCodec.Decode(cfg.OnchainConfig)
+func (f *PluginFactory) NewReportingPlugin(cfg ocr3types.ReportingPluginConfig) (ocr3types.ReportingPlugin[llotypes.ReportInfo], ocr3types.ReportingPluginInfo, error) {
+	offchainCfg, err := DecodeOffchainConfig(cfg.OffchainConfig)
 	if err != nil {
-		return nil, ocr3types.ReportingPluginInfo{}, fmt.Errorf("NewReportingPlugin failed to decode onchain config; got: 0x%x (len: %d); %w", cfg.OnchainConfig, len(cfg.OnchainConfig), err)
+		return nil, ocr3types.ReportingPluginInfo{}, fmt.Errorf("NewReportingPlugin failed to decode offchain config; got: 0x%x (len: %d); %w", cfg.OffchainConfig, len(cfg.OffchainConfig), err)
 	}
 
 	return &Plugin{
 			f.Config,
-			onchainConfig.PredecessorConfigDigest,
+			offchainCfg.PredecessorConfigDigest,
 			cfg.ConfigDigest,
 			f.PredecessorRetirementReportCache,
 			f.ShouldRetireCache,
 			f.ChannelDefinitionCache,
 			f.DataSource,
 			f.Logger,
-			cfg.N,
 			cfg.F,
 			protoObservationCodec{},
 			protoOutcomeCodec{},
-			f.RetirementReportCodec,
-			f.ReportCodecs,
+			f.Codecs,
 		}, ocr3types.ReportingPluginInfo{
 			Name: "LLO",
 			Limits: ocr3types.ReportingPluginLimits{
 				MaxQueryLength:       0,
-				MaxObservationLength: MaxObservationLength,
-				MaxOutcomeLength:     MaxOutcomeLength,
-				MaxReportLength:      MaxReportLength,
-				MaxReportCount:       MaxReportCount,
+				MaxObservationLength: ocr3types.MaxMaxObservationLength, // TODO: use tighter bound MERC-3524
+				MaxOutcomeLength:     ocr3types.MaxMaxOutcomeLength,     // TODO: use tighter bound MERC-3524
+				MaxReportLength:      ocr3types.MaxMaxReportLength,      // TODO: use tighter bound MERC-3524
+				MaxReportCount:       ocr3types.MaxMaxReportCount,       // TODO: use tighter bound MERC-3524
 			},
 		}, nil
 }
@@ -251,7 +231,7 @@ type ReportCodec interface {
 	// Encode may be lossy, so no Decode function is expected
 	// Encode should handle nil stream aggregate values without panicking (it
 	// may return error instead)
-	Encode(context.Context, Report, llotypes.ChannelDefinition) ([]byte, error)
+	Encode(Report, llotypes.ChannelDefinition) ([]byte, error)
 }
 
 type Plugin struct {
@@ -263,12 +243,10 @@ type Plugin struct {
 	ChannelDefinitionCache           ChannelDefinitionCache
 	DataSource                       DataSource
 	Logger                           logger.Logger
-	N                                int
 	F                                int
 	ObservationCodec                 ObservationCodec
 	OutcomeCodec                     OutcomeCodec
-	RetirementReportCodec            RetirementReportCodec
-	ReportCodecs                     map[llotypes.ReportFormat]ReportCodec
+	Codecs                           map[llotypes.ReportFormat]ReportCodec
 }
 
 // Query creates a Query that is sent from the leader to all follower nodes
@@ -309,7 +287,7 @@ func (p *Plugin) Observation(ctx context.Context, outctx ocr3types.OutcomeContex
 // *not* strictly) across the lifetime of a protocol instance and that
 // outctx.previousOutcome contains the consensus outcome with sequence
 // number (outctx.SeqNr-1).
-func (p *Plugin) ValidateObservation(ctx context.Context, outctx ocr3types.OutcomeContext, query types.Query, ao types.AttributedObservation) error {
+func (p *Plugin) ValidateObservation(outctx ocr3types.OutcomeContext, query types.Query, ao types.AttributedObservation) error {
 	if outctx.SeqNr < 1 {
 		return fmt.Errorf("Invalid SeqNr: %d", outctx.SeqNr)
 	} else if outctx.SeqNr == 1 {
@@ -362,7 +340,7 @@ func (p *Plugin) ValidateObservation(ctx context.Context, outctx ocr3types.Outco
 //
 // libocr guarantees that this will always be called with at least 2f+1
 // AttributedObservations
-func (p *Plugin) Outcome(ctx context.Context, outctx ocr3types.OutcomeContext, query types.Query, aos []types.AttributedObservation) (ocr3types.Outcome, error) {
+func (p *Plugin) Outcome(outctx ocr3types.OutcomeContext, query types.Query, aos []types.AttributedObservation) (ocr3types.Outcome, error) {
 	return p.outcome(outctx, query, aos)
 }
 
@@ -379,8 +357,8 @@ func (p *Plugin) Outcome(ctx context.Context, outctx ocr3types.OutcomeContext, q
 // *not* strictly) across the lifetime of a protocol instance and that
 // outctx.previousOutcome contains the consensus outcome with sequence
 // number (outctx.SeqNr-1).
-func (p *Plugin) Reports(ctx context.Context, seqNr uint64, rawOutcome ocr3types.Outcome) ([]ocr3types.ReportPlus[llotypes.ReportInfo], error) {
-	return p.reports(ctx, seqNr, rawOutcome)
+func (p *Plugin) Reports(seqNr uint64, rawOutcome ocr3types.Outcome) ([]ocr3types.ReportWithInfo[llotypes.ReportInfo], error) {
+	return p.reports(seqNr, rawOutcome)
 }
 
 func (p *Plugin) ShouldAcceptAttestedReport(context.Context, uint64, ocr3types.ReportWithInfo[llotypes.ReportInfo]) (bool, error) {
@@ -401,8 +379,8 @@ func (p *Plugin) ShouldTransmitAcceptedReport(context.Context, uint64, ocr3types
 // This is an advanced feature. The "default" approach (what OCR1 & OCR2
 // did) is to have an empty ValidateObservation function and return
 // QuorumTwoFPlusOne from this function.
-func (p *Plugin) ObservationQuorum(ctx context.Context, outctx ocr3types.OutcomeContext, query types.Query, aos []types.AttributedObservation) (bool, error) {
-	return quorumhelper.ObservationCountReachesObservationQuorum(quorumhelper.QuorumTwoFPlusOne, p.N, p.F, aos), nil
+func (p *Plugin) ObservationQuorum(outctx ocr3types.OutcomeContext, query types.Query) (ocr3types.Quorum, error) {
+	return ocr3types.QuorumTwoFPlusOne, nil
 }
 
 func (p *Plugin) Close() error {

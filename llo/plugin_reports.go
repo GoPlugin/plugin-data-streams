@@ -1,7 +1,7 @@
 package llo
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/goplugin/plugin-libocr/offchainreporting2/types"
@@ -10,7 +10,7 @@ import (
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
 )
 
-func (p *Plugin) reports(ctx context.Context, seqNr uint64, rawOutcome ocr3types.Outcome) ([]ocr3types.ReportPlus[llotypes.ReportInfo], error) {
+func (p *Plugin) reports(seqNr uint64, rawOutcome ocr3types.Outcome) ([]ocr3types.ReportWithInfo[llotypes.ReportInfo], error) {
 	if seqNr <= 1 {
 		// no reports for initial round
 		return nil, nil
@@ -26,34 +26,29 @@ func (p *Plugin) reports(ctx context.Context, seqNr uint64, rawOutcome ocr3types
 		return nil, fmt.Errorf("error getting observations timestamp: %w", err)
 	}
 
-	rwis := []ocr3types.ReportPlus[llotypes.ReportInfo]{}
+	rwis := []ocr3types.ReportWithInfo[llotypes.ReportInfo]{}
 
 	if outcome.LifeCycleStage == LifeCycleStageRetired {
 		// if we're retired, emit special retirement report to transfer
 		// ValidAfterSeconds part of state to the new protocol instance for a
 		// "gapless" handover
-		retirementReport := outcome.GenRetirementReport()
-		p.Logger.Infow("Emitting retirement report", "lifeCycleStage", outcome.LifeCycleStage, "retirementReport", retirementReport, "stage", "Report", "seqNr", seqNr)
-
-		encoded, err := p.RetirementReportCodec.Encode(retirementReport)
-		if err != nil {
-			return nil, fmt.Errorf("error encoding retirement report: %w", err)
+		retirementReport := RetirementReport{
+			outcome.ValidAfterSeconds,
 		}
 
-		rwis = append(rwis, ocr3types.ReportPlus[llotypes.ReportInfo]{
-			ReportWithInfo: ocr3types.ReportWithInfo[llotypes.ReportInfo]{
-				Report: encoded,
-				Info: llotypes.ReportInfo{
-					LifeCycleStage: LifeCycleStageRetired,
-					ReportFormat:   llotypes.ReportFormatRetirement,
-				},
+		rwis = append(rwis, ocr3types.ReportWithInfo[llotypes.ReportInfo]{
+			// TODO: Needs retirement report codec
+			Report: must(json.Marshal(retirementReport)),
+			Info: llotypes.ReportInfo{
+				LifeCycleStage: outcome.LifeCycleStage,
+				ReportFormat:   llotypes.ReportFormatJSON,
 			},
 		})
 	}
 
 	reportableChannels, unreportableChannels := outcome.ReportableChannels()
 	if p.Config.VerboseLogging {
-		p.Logger.Debugw("Reportable channels", "lifeCycleStage", outcome.LifeCycleStage, "reportableChannels", reportableChannels, "unreportableChannels", unreportableChannels, "stage", "Report", "seqNr", seqNr)
+		p.Logger.Debugw("Reportable channels", "reportableChannels", reportableChannels, "unreportableChannels", unreportableChannels, "stage", "Report", "seqNr", seqNr)
 	}
 
 	for _, cid := range reportableChannels {
@@ -73,38 +68,33 @@ func (p *Plugin) reports(ctx context.Context, seqNr uint64, rawOutcome ocr3types
 			outcome.LifeCycleStage != LifeCycleStageProduction,
 		}
 
-		encoded, err := p.encodeReport(ctx, report, cd)
+		encoded, err := p.encodeReport(report, cd)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, context.Cause(ctx)
-			}
-			p.Logger.Warnw("Error encoding report", "lifeCycleStage", outcome.LifeCycleStage, "reportFormat", cd.ReportFormat, "err", err, "channelID", cid, "stage", "Report", "seqNr", seqNr)
+			p.Logger.Warnw("Error encoding report", "reportFormat", cd.ReportFormat, "err", err, "channelID", cid, "stage", "Report", "seqNr", seqNr)
 			continue
 		}
-		rwis = append(rwis, ocr3types.ReportPlus[llotypes.ReportInfo]{
-			ReportWithInfo: ocr3types.ReportWithInfo[llotypes.ReportInfo]{
-				Report: encoded,
-				Info: llotypes.ReportInfo{
-					LifeCycleStage: outcome.LifeCycleStage,
-					ReportFormat:   cd.ReportFormat,
-				},
+		rwis = append(rwis, ocr3types.ReportWithInfo[llotypes.ReportInfo]{
+			Report: encoded,
+			Info: llotypes.ReportInfo{
+				LifeCycleStage: outcome.LifeCycleStage,
+				ReportFormat:   cd.ReportFormat,
 			},
 		})
 	}
 
 	if p.Config.VerboseLogging && len(rwis) == 0 {
-		p.Logger.Debugw("No reports, will not transmit anything", "lifeCycleStage", outcome.LifeCycleStage, "reportableChannels", reportableChannels, "stage", "Report", "seqNr", seqNr)
+		p.Logger.Debugw("No reports, will not transmit anything", "reportableChannels", reportableChannels, "stage", "Report", "seqNr", seqNr)
 	}
 
 	return rwis, nil
 }
 
-func (p *Plugin) encodeReport(ctx context.Context, r Report, cd llotypes.ChannelDefinition) (types.Report, error) {
-	codec, exists := p.ReportCodecs[cd.ReportFormat]
+func (p *Plugin) encodeReport(r Report, cd llotypes.ChannelDefinition) (types.Report, error) {
+	codec, exists := p.Codecs[cd.ReportFormat]
 	if !exists {
 		return nil, fmt.Errorf("codec missing for ReportFormat=%q", cd.ReportFormat)
 	}
-	return codec.Encode(ctx, r, cd)
+	return codec.Encode(r, cd)
 }
 
 type Report struct {

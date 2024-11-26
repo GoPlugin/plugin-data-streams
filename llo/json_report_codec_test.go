@@ -9,7 +9,6 @@ import (
 
 	"github.com/goplugin/plugin-common/pkg/types/llo"
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
-	"github.com/goplugin/plugin-common/pkg/utils/tests"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,6 @@ import (
 
 func Test_JSONCodec(t *testing.T) {
 	t.Run("Encode=>Decode", func(t *testing.T) {
-		ctx := tests.Context(t)
 		r := Report{
 			ConfigDigest:                types.ConfigDigest([32]byte{1, 2, 3}),
 			SeqNr:                       43,
@@ -30,7 +28,7 @@ func Test_JSONCodec(t *testing.T) {
 
 		cdc := JSONReportCodec{}
 
-		encoded, err := cdc.Encode(ctx, r, llo.ChannelDefinition{})
+		encoded, err := cdc.Encode(r, llo.ChannelDefinition{})
 		require.NoError(t, err)
 
 		fmt.Println("encoded", string(encoded))
@@ -40,12 +38,5 @@ func Test_JSONCodec(t *testing.T) {
 		require.NoError(t, err)
 
 		assert.Equal(t, r, decoded)
-	})
-	t.Run("invalid input fails decode", func(t *testing.T) {
-		cdc := JSONReportCodec{}
-		_, err := cdc.Decode([]byte(`{}`))
-		assert.EqualError(t, err, "invalid ConfigDigest; cannot convert bytes to ConfigDigest. bytes have wrong length 0")
-		_, err = cdc.Decode([]byte(`{"ConfigDigest":"0102030000000000000000000000000000000000000000000000000000000000"}`))
-		assert.EqualError(t, err, "missing SeqNr")
 	})
 }

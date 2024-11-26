@@ -2,7 +2,6 @@ package llo
 
 import (
 	"fmt"
-	"math"
 	"testing"
 	"time"
 
@@ -16,11 +15,9 @@ import (
 
 	"github.com/goplugin/plugin-common/pkg/logger"
 	llotypes "github.com/goplugin/plugin-common/pkg/types/llo"
-	"github.com/goplugin/plugin-common/pkg/utils/tests"
 )
 
 func Test_Outcome(t *testing.T) {
-	ctx := tests.Context(t)
 	p := &Plugin{
 		Config:           Config{true},
 		OutcomeCodec:     protoOutcomeCodec{},
@@ -29,15 +26,15 @@ func Test_Outcome(t *testing.T) {
 	}
 
 	t.Run("if number of observers < 2f+1, errors", func(t *testing.T) {
-		_, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{})
+		_, err := p.Outcome(ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{})
 		assert.EqualError(t, err, "invariant violation: expected at least 2f+1 attributed observations, got 0 (f: 0)")
 		p.F = 1
-		_, err = p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{{}, {}})
+		_, err = p.Outcome(ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{{}, {}})
 		assert.EqualError(t, err, "invariant violation: expected at least 2f+1 attributed observations, got 2 (f: 1)")
 	})
 
 	t.Run("if seqnr == 1, and has enough observers, emits initial outcome with 'production' LifeCycleStage", func(t *testing.T) {
-		outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{
+		outcome, err := p.Outcome(ocr3types.OutcomeContext{SeqNr: 1}, types.Query{}, []types.AttributedObservation{
 			{
 				Observation: []byte{},
 				Observer:    commontypes.OracleID(0),
@@ -85,7 +82,7 @@ func Test_Outcome(t *testing.T) {
 						Observer:    commontypes.OracleID(i),
 					})
 			}
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2}, types.Query{}, aos)
+			outcome, err := p.Outcome(ocr3types.OutcomeContext{SeqNr: 2}, types.Query{}, aos)
 			require.NoError(t, err)
 
 			decoded, err := p.OutcomeCodec.Decode(outcome)
@@ -124,7 +121,7 @@ func Test_Outcome(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{PreviousOutcome: previousOutcome, SeqNr: 2}, types.Query{}, aos)
+			outcome, err := p.Outcome(ocr3types.OutcomeContext{PreviousOutcome: previousOutcome, SeqNr: 2}, types.Query{}, aos)
 			require.NoError(t, err)
 
 			decoded, err := p.OutcomeCodec.Decode(outcome)
@@ -152,7 +149,7 @@ func Test_Outcome(t *testing.T) {
 						Observer:    commontypes.OracleID(i),
 					})
 			}
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2}, types.Query{}, aos)
+			outcome, err := p.Outcome(ocr3types.OutcomeContext{SeqNr: 2}, types.Query{}, aos)
 			require.NoError(t, err)
 
 			decoded, err := p.OutcomeCodec.Decode(outcome)
@@ -210,7 +207,7 @@ func Test_Outcome(t *testing.T) {
 						Observer:    commontypes.OracleID(i),
 					})
 			}
-			outcome, err := p.Outcome(ctx, outctx, types.Query{}, aos)
+			outcome, err := p.Outcome(outctx, types.Query{}, aos)
 			require.NoError(t, err)
 
 			decoded, err := p.OutcomeCodec.Decode(outcome)
@@ -240,200 +237,6 @@ func Test_Outcome(t *testing.T) {
 				},
 			}, decoded)
 		})
-		t.Run("unreportable channels from the previous outcome re-use the same previous ValidAfterSeconds", func(t *testing.T) {
-			previousOutcome := Outcome{
-				LifeCycleStage:                   llotypes.LifeCycleStage("test"),
-				ObservationsTimestampNanoseconds: int64(102030410 * time.Second),
-				ChannelDefinitions:               nil, // nil channel definitions makes all channels unreportable
-				ValidAfterSeconds: map[llotypes.ChannelID]uint32{
-					1: uint32(102030405),
-					2: uint32(102030400),
-				},
-				StreamAggregates: map[llotypes.StreamID]map[llotypes.Aggregator]StreamValue{
-					1: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(120)),
-					},
-					2: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(220)),
-					},
-					3: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorQuote: &Quote{Bid: decimal.NewFromInt(320), Benchmark: decimal.NewFromInt(330), Ask: decimal.NewFromInt(340)},
-					},
-				},
-			}
-			encodedPreviousOutcome, err := p.OutcomeCodec.Encode(previousOutcome)
-			require.NoError(t, err)
-
-			aos := []types.AttributedObservation{}
-			for i := 0; i < 4; i++ {
-				obs := Observation{
-					UnixTimestampNanoseconds: int64(102030415 * time.Second),
-					StreamValues: map[llotypes.StreamID]StreamValue{
-						1: ToDecimal(decimal.NewFromInt(int64(120))),
-						2: ToDecimal(decimal.NewFromInt(int64(220))),
-						3: &Quote{Bid: decimal.NewFromInt(int64(320)), Benchmark: decimal.NewFromInt(int64(330)), Ask: decimal.NewFromInt(int64(340))},
-					},
-				}
-				encoded, err2 := p.ObservationCodec.Encode(obs)
-				require.NoError(t, err2)
-				aos = append(aos,
-					types.AttributedObservation{
-						Observation: encoded,
-						Observer:    commontypes.OracleID(i),
-					})
-			}
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2, PreviousOutcome: encodedPreviousOutcome}, types.Query{}, aos)
-			require.NoError(t, err)
-
-			decoded, err := p.OutcomeCodec.Decode(outcome)
-			require.NoError(t, err)
-
-			assert.Equal(t, int64(102030415*time.Second), decoded.ObservationsTimestampNanoseconds)
-			require.Len(t, decoded.ValidAfterSeconds, 2)
-			assert.Equal(t, int64(102030405), int64(decoded.ValidAfterSeconds[1]))
-			assert.Equal(t, int64(102030400), int64(decoded.ValidAfterSeconds[2]))
-		})
-		t.Run("ValidAfterSeconds is set based on the previous observation timestamp such that reports never overlap", func(t *testing.T) {
-			previousOutcome := Outcome{
-				LifeCycleStage:                   llotypes.LifeCycleStage("test"),
-				ObservationsTimestampNanoseconds: int64(102030410 * time.Second),
-				ChannelDefinitions:               cdc.definitions,
-				ValidAfterSeconds: map[llotypes.ChannelID]uint32{
-					1: uint32(102030405),
-					2: uint32(102030400),
-				},
-				StreamAggregates: map[llotypes.StreamID]map[llotypes.Aggregator]StreamValue{
-					1: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(120)),
-					},
-					2: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(220)),
-					},
-					3: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorQuote: &Quote{Bid: decimal.NewFromInt(320), Benchmark: decimal.NewFromInt(330), Ask: decimal.NewFromInt(340)},
-					},
-				},
-			}
-			encodedPreviousOutcome, err := p.OutcomeCodec.Encode(previousOutcome)
-			require.NoError(t, err)
-
-			aos := []types.AttributedObservation{}
-			for i := 0; i < 4; i++ {
-				obs := Observation{
-					UnixTimestampNanoseconds: int64(102030415 * time.Second),
-					StreamValues: map[llotypes.StreamID]StreamValue{
-						1: ToDecimal(decimal.NewFromInt(int64(120))),
-						2: ToDecimal(decimal.NewFromInt(int64(220))),
-						3: &Quote{Bid: decimal.NewFromInt(int64(320)), Benchmark: decimal.NewFromInt(int64(330)), Ask: decimal.NewFromInt(int64(340))},
-					},
-				}
-				encoded, err2 := p.ObservationCodec.Encode(obs)
-				require.NoError(t, err2)
-				aos = append(aos,
-					types.AttributedObservation{
-						Observation: encoded,
-						Observer:    commontypes.OracleID(i),
-					})
-			}
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2, PreviousOutcome: encodedPreviousOutcome}, types.Query{}, aos)
-			require.NoError(t, err)
-
-			decoded, err := p.OutcomeCodec.Decode(outcome)
-			require.NoError(t, err)
-
-			assert.Equal(t, int64(102030415*time.Second), decoded.ObservationsTimestampNanoseconds)
-			require.Len(t, decoded.ValidAfterSeconds, 2)
-			assert.Equal(t, int64(102030410), int64(decoded.ValidAfterSeconds[1]))
-			assert.Equal(t, int64(102030410), int64(decoded.ValidAfterSeconds[2]))
-		})
-		t.Run("does generate outcome for reports that would overlap on a seconds-basis (allows duplicate reports)", func(t *testing.T) {
-			previousOutcome := Outcome{
-				LifeCycleStage:                   llotypes.LifeCycleStage("test"),
-				ObservationsTimestampNanoseconds: int64(102030410 * time.Second),
-				ChannelDefinitions:               cdc.definitions,
-				ValidAfterSeconds: map[llotypes.ChannelID]uint32{
-					1: uint32(102030409),
-					2: uint32(102030409),
-				},
-				StreamAggregates: map[llotypes.StreamID]map[llotypes.Aggregator]StreamValue{
-					1: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(120)),
-					},
-					2: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorMedian: ToDecimal(decimal.NewFromInt(220)),
-					},
-					3: map[llotypes.Aggregator]StreamValue{
-						llotypes.AggregatorQuote: &Quote{Bid: decimal.NewFromInt(320), Benchmark: decimal.NewFromInt(330), Ask: decimal.NewFromInt(340)},
-					},
-				},
-			}
-			encodedPreviousOutcome, err := p.OutcomeCodec.Encode(previousOutcome)
-			require.NoError(t, err)
-
-			aos := []types.AttributedObservation{}
-			for i := 0; i < 4; i++ {
-				obs := Observation{
-					UnixTimestampNanoseconds: int64((102030410 * time.Second) + 100*time.Millisecond), // 100ms after previous outcome
-					StreamValues: map[llotypes.StreamID]StreamValue{
-						1: ToDecimal(decimal.NewFromInt(int64(120))),
-						2: ToDecimal(decimal.NewFromInt(int64(220))),
-						3: &Quote{Bid: decimal.NewFromInt(int64(320)), Benchmark: decimal.NewFromInt(int64(330)), Ask: decimal.NewFromInt(int64(340))},
-					},
-				}
-				encoded, err2 := p.ObservationCodec.Encode(obs)
-				require.NoError(t, err2)
-				aos = append(aos,
-					types.AttributedObservation{
-						Observation: encoded,
-						Observer:    commontypes.OracleID(i),
-					})
-			}
-			outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2, PreviousOutcome: encodedPreviousOutcome}, types.Query{}, aos)
-			require.NoError(t, err)
-
-			decoded, err := p.OutcomeCodec.Decode(outcome)
-			require.NoError(t, err)
-
-			assert.Equal(t, int64(102030410*time.Second+100*time.Millisecond), decoded.ObservationsTimestampNanoseconds)
-			require.Len(t, decoded.ValidAfterSeconds, 2)
-			assert.Equal(t, int64(102030410), int64(decoded.ValidAfterSeconds[1]))
-			assert.Equal(t, int64(102030410), int64(decoded.ValidAfterSeconds[2]))
-		})
-	})
-	t.Run("if previousOutcome is retired, returns outcome as normal", func(t *testing.T) {
-		previousOutcome := Outcome{
-			LifeCycleStage: llotypes.LifeCycleStage("retired"),
-			ValidAfterSeconds: map[llotypes.ChannelID]uint32{
-				1: uint32(102030409),
-				2: uint32(102030409),
-			},
-		}
-		encodedPreviousOutcome, err := p.OutcomeCodec.Encode(previousOutcome)
-		require.NoError(t, err)
-
-		aos := []types.AttributedObservation{}
-		for i := 0; i < 4; i++ {
-			obs := Observation{
-				UnixTimestampNanoseconds: int64(102030415 * time.Second),
-			}
-			encoded, err2 := p.ObservationCodec.Encode(obs)
-			require.NoError(t, err2)
-			aos = append(aos,
-				types.AttributedObservation{
-					Observation: encoded,
-					Observer:    commontypes.OracleID(i),
-				})
-		}
-		outcome, err := p.Outcome(ctx, ocr3types.OutcomeContext{SeqNr: 2, PreviousOutcome: encodedPreviousOutcome}, types.Query{}, aos)
-		require.NoError(t, err)
-
-		decoded, err := p.OutcomeCodec.Decode(outcome)
-		require.NoError(t, err)
-
-		assert.Equal(t, int64(102030415000000000), decoded.ObservationsTimestampNanoseconds)
-		require.Len(t, decoded.ValidAfterSeconds, 2)
-		assert.Equal(t, int64(102030409), int64(decoded.ValidAfterSeconds[1]))
-		assert.Equal(t, int64(102030409), int64(decoded.ValidAfterSeconds[2]))
 	})
 }
 
@@ -517,54 +320,5 @@ func Test_MakeChannelHash(t *testing.T) {
 		}
 
 		assert.NotEqual(t, MakeChannelHash(def1), MakeChannelHash(def2))
-	})
-}
-
-func Test_Outcome_Methods(t *testing.T) {
-	t.Run("IsReportable", func(t *testing.T) {
-		outcome := Outcome{}
-		cid := llotypes.ChannelID(1)
-
-		// Not reportable if retired
-		outcome.LifeCycleStage = LifeCycleStageRetired
-		assert.EqualError(t, outcome.IsReportable(cid), "ChannelID: 1; Reason: IsReportable=false; retired channel")
-
-		// Timestamp overflow
-		outcome.LifeCycleStage = LifeCycleStageProduction
-		outcome.ObservationsTimestampNanoseconds = time.Unix(math.MaxInt64, 0).UnixNano()
-		outcome.ChannelDefinitions = map[llotypes.ChannelID]llotypes.ChannelDefinition{}
-		assert.EqualError(t, outcome.IsReportable(cid), "ChannelID: 1; Reason: IsReportable=false; invalid observations timestamp; Err: timestamp doesn't fit into uint32: -1")
-
-		// No channel definition with ID
-		outcome.LifeCycleStage = LifeCycleStageProduction
-		outcome.ObservationsTimestampNanoseconds = time.Unix(1726670490, 0).UnixNano()
-		outcome.ChannelDefinitions = map[llotypes.ChannelID]llotypes.ChannelDefinition{}
-		assert.EqualError(t, outcome.IsReportable(cid), "ChannelID: 1; Reason: IsReportable=false; no channel definition with this ID")
-
-		// No ValidAfterSeconds yet
-		outcome.ChannelDefinitions[cid] = llotypes.ChannelDefinition{}
-		assert.EqualError(t, outcome.IsReportable(cid), "ChannelID: 1; Reason: IsReportable=false; no validAfterSeconds entry yet, this must be a new channel")
-
-		// ValidAfterSeconds is in the future
-		outcome.ValidAfterSeconds = map[llotypes.ChannelID]uint32{cid: uint32(1726670491)}
-		assert.EqualError(t, outcome.IsReportable(cid), "ChannelID: 1; Reason: IsReportable=false; not valid yet (observationsTimestampSeconds=1726670490 < validAfterSeconds=1726670491)")
-	})
-	t.Run("ReportableChannels", func(t *testing.T) {
-		outcome := Outcome{
-			ObservationsTimestampNanoseconds: time.Unix(1726670490, 0).UnixNano(),
-			ChannelDefinitions: map[llotypes.ChannelID]llotypes.ChannelDefinition{
-				1: {},
-				2: {},
-				3: {},
-			},
-			ValidAfterSeconds: map[llotypes.ChannelID]uint32{
-				1: 1726670489,
-				3: 1726670489,
-			},
-		}
-		reportable, unreportable := outcome.ReportableChannels()
-		assert.Equal(t, []llotypes.ChannelID{1, 3}, reportable)
-		require.Len(t, unreportable, 1)
-		assert.Equal(t, "ChannelID: 2; Reason: IsReportable=false; no validAfterSeconds entry yet, this must be a new channel", unreportable[0].Error())
 	})
 }
